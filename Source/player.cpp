@@ -1299,7 +1299,7 @@ void PM_ChangeOffset(int pnum)
 /**
  * @brief Start moving a player to a new tile
  */
-void StartWalk(int pnum, Point vel, Point off, int xadd, int yadd, int mapx, int mapy, Direction EndDir, _scroll_direction sdir, int variant, bool pmWillBeCalled)
+void StartWalk(int pnum, Point vel, Point off, Point add, int mapx, int mapy, Direction EndDir, _scroll_direction sdir, int variant, bool pmWillBeCalled)
 {
 	auto &player = plr[pnum];
 
@@ -1315,9 +1315,9 @@ void StartWalk(int pnum, Point vel, Point off, int xadd, int yadd, int mapx, int
 	}
 
 	//The player's tile position after finishing this movement action
-	int px = xadd + player.position.tile.x;
-	int py = yadd + player.position.tile.y;
-	player.position.future = { px, py };
+	// int px = xadd + player.position.tile.x;
+	// int py = yadd + player.position.tile.y;
+	player.position.future = add + player.position.tile;
 
 	//If this is the local player then update the camera offset position
 	if (pnum == myplr) {
@@ -1327,11 +1327,11 @@ void StartWalk(int pnum, Point vel, Point off, int xadd, int yadd, int mapx, int
 
 	switch (variant) {
 	case PM_WALK:
-		dPlayer[px][py] = -(pnum + 1);
+		dPlayer[player.position.future.x][player.position.future.y] = -(pnum + 1);
 		player._pmode = PM_WALK;
 		player.position.velocity = vel;
 		player.position.offset = { 0, 0 };
-		player.position.temp = { xadd, yadd };
+		player.position.temp = add;
 		player.tempDirection = EndDir;
 
 		player.position.offset2 = { 0, 0 };
@@ -1339,7 +1339,7 @@ void StartWalk(int pnum, Point vel, Point off, int xadd, int yadd, int mapx, int
 	case PM_WALK2:
 		dPlayer[player.position.tile.x][player.position.tile.y] = -(pnum + 1);
 		player.position.temp = player.position.tile;
-		player.position.tile = { px, py }; // Move player to the next tile to maintain correct render order
+		player.position.tile = player.position.future; // Move player to the next tile to maintain correct render order
 		dPlayer[player.position.tile.x][player.position.tile.y] = pnum + 1;
 		player.position.offset = off; // Offset player sprite to align with their previous tile position
 
@@ -1357,7 +1357,7 @@ void StartWalk(int pnum, Point vel, Point off, int xadd, int yadd, int mapx, int
 		int y = mapy + player.position.tile.y;
 
 		dPlayer[player.position.tile.x][player.position.tile.y] = -(pnum + 1);
-		dPlayer[px][py] = -(pnum + 1);
+		dPlayer[player.position.future.x][player.position.future.y] = -(pnum + 1);
 		player._pVar4 = x;
 		player._pVar5 = y;
 		dFlags[x][y] |= BFLAG_PLAYERLR;
@@ -1370,7 +1370,7 @@ void StartWalk(int pnum, Point vel, Point off, int xadd, int yadd, int mapx, int
 
 		player._pmode = PM_WALK3;
 		player.position.velocity = vel;
-		player.position.temp = { px, py };
+		player.position.temp = player.position.future;
 		player.position.offset2 = off * 256;
 		player.tempDirection = EndDir;
 		break;
@@ -3026,46 +3026,58 @@ void CheckNewPath(int pnum, bool pmWillBeCalled)
 				yvel = 512;
 			}
 
+			// TODO : Refactor these variables in, can we const them?
+			Point velocity{ 0, 0 };
+			Point offset{ 0, 0 };
+			Point add{ 0, 0 };
 			switch (player.walkpath[0]) {
 			case WALK_N:
-				Point const velocity{ 0, -xvel };
-				Point const offset{ 0, 0 };
-				StartWalk(pnum, velocity, offset, -1, -1, 0, 0, DIR_N, SDIR_N, PM_WALK, pmWillBeCalled);
+				velocity = { 0, -xvel };
+				offset = { 0, 0 };
+				add = { -1, -1 };
+				StartWalk(pnum, velocity, offset, add, 0, 0, DIR_N, SDIR_N, PM_WALK, pmWillBeCalled);
 				break;
 			case WALK_NE:
-				Point const velocity{ xvel, -yvel };
-				Point const offset{ 0, 0 };
-				StartWalk(pnum, velocity, offset, 0, -1, 0, 0, DIR_NE, SDIR_NE, PM_WALK, pmWillBeCalled);
+				velocity = { xvel, -yvel };
+				offset = { 0, 0 };
+				add = { 0, -1 };
+				StartWalk(pnum, velocity, offset, add, 0, 0, DIR_NE, SDIR_NE, PM_WALK, pmWillBeCalled);
 				break;
 			case WALK_E:
-				Point const velocity{ xvel, -yvel };
-				Point const offset{ -32, -16 };
-				StartWalk(pnum, velocity, offset, 1, -1, 1, 0, DIR_E, SDIR_E, PM_WALK3, pmWillBeCalled);
+				velocity = { xvel, -yvel };
+				offset = { -32, -16 };
+				add = { 1, -1 };
+				StartWalk(pnum, velocity, offset, add, 1, 0, DIR_E, SDIR_E, PM_WALK3, pmWillBeCalled);
 				break;
 			case WALK_SE:
-				Point const velocity{ xvel, -yvel };
-				Point const offset{ -32, -16 };
-				StartWalk(pnum, velocity, offset, 1, 0, 0, 0, DIR_SE, SDIR_SE, PM_WALK2, pmWillBeCalled);
+				velocity = { xvel, -yvel };
+				offset = { -32, -16 };
+				add = { 1, 0 };
+				StartWalk(pnum, velocity, offset, add, 0, 0, DIR_SE, SDIR_SE, PM_WALK2, pmWillBeCalled);
 				break;
 			case WALK_S:
-				Point const velocity{ 0, xvel };
-				Point const offset{ 0, -32 };
-				StartWalk(pnum, velocity, offset, 1, 1, 0, 0, DIR_S, SDIR_S, PM_WALK2, pmWillBeCalled);
+				velocity = { 0, xvel };
+				offset = { 0, -32 };
+				add = { 1, 1 };
+				StartWalk(pnum, velocity, offset, add, 0, 0, DIR_S, SDIR_S, PM_WALK2, pmWillBeCalled);
 				break;
 			case WALK_SW:
-				Point const velocity{ -xvel, yvel };
-				Point const offset{ 32, -16 };
-				StartWalk(pnum, velocity, offset, 0, 1, 0, 0, DIR_SW, SDIR_SW, PM_WALK2, pmWillBeCalled);
+				velocity = { -xvel, yvel };
+				offset = { 32, -16 };
+				add = { 0, 1 };
+				StartWalk(pnum, velocity, offset, add, 0, 0, DIR_SW, SDIR_SW, PM_WALK2, pmWillBeCalled);
 				break;
 			case WALK_W:
-				Point const velocity{ -xvel, yvel };
-				Point const offset{ 32, -16 };
-				StartWalk(pnum, velocity, offset, -1, 1, 0, 1, DIR_W, SDIR_W, PM_WALK3, pmWillBeCalled);
+				velocity = { -xvel, yvel };
+				offset = { 32, -16 };
+				add = { -1, 1 };
+				StartWalk(pnum, velocity, offset, add, 0, 1, DIR_W, SDIR_W, PM_WALK3, pmWillBeCalled);
 				break;
 			case WALK_NW:
-				Point const velocity{ -xvel, -yvel };
-				Point const offset{ 0, 0 };
-				StartWalk(pnum, velocity, offset, -1, 0, 0, 0, DIR_NW, SDIR_NW, PM_WALK, pmWillBeCalled);
+				velocity = { -xvel, -yvel };
+				offset = { 0, 0 };
+				add = { -1, 0 };
+				StartWalk(pnum, velocity, offset, add, 0, 0, DIR_NW, SDIR_NW, PM_WALK, pmWillBeCalled);
 				break;
 			}
 
