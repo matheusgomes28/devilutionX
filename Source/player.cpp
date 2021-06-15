@@ -24,6 +24,88 @@
 #include "utils/language.h"
 #include "utils/log.hpp"
 
+namespace
+{
+	using namespace devilution;
+
+	void PM_ChangeLightOff(PlayerStruct &player)
+	{
+		if (player._plid == NO_LIGHT)
+			return;
+
+		const LightListStruct *l = &LightList[player._plid];
+		int x = 2 * player.position.offset.y + player.position.offset.x;
+		int y = 2 * player.position.offset.y - player.position.offset.x;
+
+		x = (x / 8) * (x < 0 ? 1 : -1);
+		y = (y / 8) * (y < 0 ? 1 : -1);
+		int lx = x + (l->position.tile.x * 8);
+		int ly = y + (l->position.tile.y * 8);
+		int offx = l->position.offset.x + (l->position.tile.x * 8);
+		int offy = l->position.offset.y + (l->position.tile.y * 8);
+
+		if (abs(lx - offx) < 3 && abs(ly - offy) < 3)
+			return;
+
+		ChangeLightOff(player._plid, { x, y });
+	}
+
+	void WalkNorth(int pnum, Point vel, Point add, Direction endDir)
+	{
+		auto& player = plr[pnum];
+		dPlayer[player.position.future.x][player.position.future.y] = -(pnum + 1);
+		player._pmode = PM_WALK;
+		player.position.velocity = vel;
+		player.position.offset = { 0, 0 };
+		player.position.temp = add;
+		player.tempDirection = endDir;
+
+		player.position.offset2 = { 0, 0 };
+	}
+
+	void WalkSouth(int pnum, Point vel, Point off, Direction endDir)
+	{
+		auto& player = plr[pnum];
+		dPlayer[player.position.tile.x][player.position.tile.y] = -(pnum + 1);
+		player.position.temp = player.position.tile;
+		player.position.tile = player.position.future; // Move player to the next tile to maintain correct render order
+		dPlayer[player.position.tile.x][player.position.tile.y] = pnum + 1;
+		player.position.offset = off; // Offset player sprite to align with their previous tile position
+
+		ChangeLightXY(player._plid, player.position.tile);
+		PM_ChangeLightOff(player);
+
+
+		player._pmode = PM_WALK2;
+		player.position.velocity = vel;
+		player.position.offset2 = off * 256;
+		player.tempDirection = endDir;
+	}
+
+	void WalkSides(int pnum, Point vel, Point map, Point off, Direction endDir)
+	{
+		auto& player = plr[pnum];
+		Point flag_pos = player.position.tile + map;
+		dPlayer[player.position.tile.x][player.position.tile.y] = -(pnum + 1);
+		dPlayer[player.position.future.x][player.position.future.y] = -(pnum + 1);
+		player._pVar4 = flag_pos.x;
+		player._pVar5 = flag_pos.y;
+		dFlags[flag_pos.x][flag_pos.y] |= BFLAG_PLAYERLR;
+		player.position.offset = off; // Offset player sprite to align with their previous tile position
+
+		if (leveltype != DTYPE_TOWN) {
+			ChangeLightXY(player._plid, flag_pos);
+			PM_ChangeLightOff(player);
+		}
+
+		player._pmode = PM_WALK3;
+		player.position.velocity = vel;
+		player.position.temp = player.position.future;
+		player.position.offset2 = off * 256;
+		player.tempDirection = endDir;
+	}
+} // namespace
+
 namespace devilution {
 
 int myplr;
@@ -1245,28 +1327,6 @@ void StartWalkStand(int pnum)
 	}
 }
 
-static void PM_ChangeLightOff(PlayerStruct &player)
-{
-	if (player._plid == NO_LIGHT)
-		return;
-
-	const LightListStruct *l = &LightList[player._plid];
-	int x = 2 * player.position.offset.y + player.position.offset.x;
-	int y = 2 * player.position.offset.y - player.position.offset.x;
-
-	x = (x / 8) * (x < 0 ? 1 : -1);
-	y = (y / 8) * (y < 0 ? 1 : -1);
-	int lx = x + (l->position.tile.x * 8);
-	int ly = y + (l->position.tile.y * 8);
-	int offx = l->position.offset.x + (l->position.tile.x * 8);
-	int offy = l->position.offset.y + (l->position.tile.y * 8);
-
-	if (abs(lx - offx) < 3 && abs(ly - offy) < 3)
-		return;
-
-	ChangeLightOff(player._plid, { x, y });
-}
-
 void PM_ChangeOffset(int pnum)
 {
 	if ((DWORD)pnum >= MAX_PLRS) {
@@ -1299,7 +1359,7 @@ void PM_ChangeOffset(int pnum)
 /**
  * @brief Start moving a player to a new tile
  */
-void StartWalk(int pnum, Point vel, Point off, Point add, int mapx, int mapy, Direction EndDir, _scroll_direction sdir, int variant, bool pmWillBeCalled)
+void StartWalk(int pnum, Point vel, Point off, Point add, Point map, Direction EndDir, _scroll_direction sdir, int variant, bool pmWillBeCalled)
 {
 	auto &player = plr[pnum];
 
@@ -1327,52 +1387,13 @@ void StartWalk(int pnum, Point vel, Point off, Point add, int mapx, int mapy, Di
 
 	switch (variant) {
 	case PM_WALK:
-		dPlayer[player.position.future.x][player.position.future.y] = -(pnum + 1);
-		player._pmode = PM_WALK;
-		player.position.velocity = vel;
-		player.position.offset = { 0, 0 };
-		player.position.temp = add;
-		player.tempDirection = EndDir;
-
-		player.position.offset2 = { 0, 0 };
+		WalkNorth(pnum, vel, add, EndDir);
 		break;
 	case PM_WALK2:
-		dPlayer[player.position.tile.x][player.position.tile.y] = -(pnum + 1);
-		player.position.temp = player.position.tile;
-		player.position.tile = player.position.future; // Move player to the next tile to maintain correct render order
-		dPlayer[player.position.tile.x][player.position.tile.y] = pnum + 1;
-		player.position.offset = off; // Offset player sprite to align with their previous tile position
-
-		ChangeLightXY(player._plid, player.position.tile);
-		PM_ChangeLightOff(player);
-
-
-		player._pmode = PM_WALK2;
-		player.position.velocity = vel;
-		player.position.offset2 = off * 256;
-		player.tempDirection = EndDir;
+		WalkSouth(pnum, vel, off, EndDir);
 		break;
 	case PM_WALK3:
-		int x = mapx + player.position.tile.x;
-		int y = mapy + player.position.tile.y;
-
-		dPlayer[player.position.tile.x][player.position.tile.y] = -(pnum + 1);
-		dPlayer[player.position.future.x][player.position.future.y] = -(pnum + 1);
-		player._pVar4 = x;
-		player._pVar5 = y;
-		dFlags[x][y] |= BFLAG_PLAYERLR;
-		player.position.offset = off; // Offset player sprite to align with their previous tile position
-
-		if (leveltype != DTYPE_TOWN) {
-			ChangeLightXY(player._plid, { x, y });
-			PM_ChangeLightOff(player);
-		}
-
-		player._pmode = PM_WALK3;
-		player.position.velocity = vel;
-		player.position.temp = player.position.future;
-		player.position.offset2 = off * 256;
-		player.tempDirection = EndDir;
+		WalkSides(pnum, vel, map, off, EndDir);
 		break;
 	}
 
@@ -3030,54 +3051,63 @@ void CheckNewPath(int pnum, bool pmWillBeCalled)
 			Point velocity{ 0, 0 };
 			Point offset{ 0, 0 };
 			Point add{ 0, 0 };
+			Point map{ 0, 0 };
 			switch (player.walkpath[0]) {
 			case WALK_N:
 				velocity = { 0, -xvel };
 				offset = { 0, 0 };
 				add = { -1, -1 };
-				StartWalk(pnum, velocity, offset, add, 0, 0, DIR_N, SDIR_N, PM_WALK, pmWillBeCalled);
+				map = { 0, 0 };
+				StartWalk(pnum, velocity, offset, add, map, DIR_N, SDIR_N, PM_WALK, pmWillBeCalled);
 				break;
 			case WALK_NE:
 				velocity = { xvel, -yvel };
 				offset = { 0, 0 };
 				add = { 0, -1 };
-				StartWalk(pnum, velocity, offset, add, 0, 0, DIR_NE, SDIR_NE, PM_WALK, pmWillBeCalled);
+				map = { 0, 0 };
+				StartWalk(pnum, velocity, offset, add, map, DIR_NE, SDIR_NE, PM_WALK, pmWillBeCalled);
 				break;
 			case WALK_E:
 				velocity = { xvel, -yvel };
 				offset = { -32, -16 };
 				add = { 1, -1 };
-				StartWalk(pnum, velocity, offset, add, 1, 0, DIR_E, SDIR_E, PM_WALK3, pmWillBeCalled);
+				map = { 1, 0 };
+				StartWalk(pnum, velocity, offset, add, map, DIR_E, SDIR_E, PM_WALK3, pmWillBeCalled);
 				break;
 			case WALK_SE:
 				velocity = { xvel, -yvel };
 				offset = { -32, -16 };
 				add = { 1, 0 };
-				StartWalk(pnum, velocity, offset, add, 0, 0, DIR_SE, SDIR_SE, PM_WALK2, pmWillBeCalled);
+				map = { 0, 0 };
+				StartWalk(pnum, velocity, offset, add, map, DIR_SE, SDIR_SE, PM_WALK2, pmWillBeCalled);
 				break;
 			case WALK_S:
 				velocity = { 0, xvel };
 				offset = { 0, -32 };
 				add = { 1, 1 };
-				StartWalk(pnum, velocity, offset, add, 0, 0, DIR_S, SDIR_S, PM_WALK2, pmWillBeCalled);
+				map = { 0, 0 };
+				StartWalk(pnum, velocity, offset, add, map, DIR_S, SDIR_S, PM_WALK2, pmWillBeCalled);
 				break;
 			case WALK_SW:
 				velocity = { -xvel, yvel };
 				offset = { 32, -16 };
 				add = { 0, 1 };
-				StartWalk(pnum, velocity, offset, add, 0, 0, DIR_SW, SDIR_SW, PM_WALK2, pmWillBeCalled);
+				map = { 0, 0 };
+				StartWalk(pnum, velocity, offset, add, map, DIR_SW, SDIR_SW, PM_WALK2, pmWillBeCalled);
 				break;
 			case WALK_W:
 				velocity = { -xvel, yvel };
 				offset = { 32, -16 };
 				add = { -1, 1 };
-				StartWalk(pnum, velocity, offset, add, 0, 1, DIR_W, SDIR_W, PM_WALK3, pmWillBeCalled);
+				map = { 0, 1 };
+				StartWalk(pnum, velocity, offset, add, map, DIR_W, SDIR_W, PM_WALK3, pmWillBeCalled);
 				break;
 			case WALK_NW:
 				velocity = { -xvel, -yvel };
 				offset = { 0, 0 };
 				add = { -1, 0 };
-				StartWalk(pnum, velocity, offset, add, 0, 0, DIR_NW, SDIR_NW, PM_WALK, pmWillBeCalled);
+				map = { 0, 0 };
+				StartWalk(pnum, velocity, offset, add, map, DIR_NW, SDIR_NW, PM_WALK, pmWillBeCalled);
 				break;
 			}
 
