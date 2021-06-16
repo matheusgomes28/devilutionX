@@ -104,6 +104,45 @@ namespace
 		player.position.offset2 = off * 256;
 		player.tempDirection = endDir;
 	}
+
+	constexpr _scroll_direction DirToScrollDir(Direction dir)
+	{
+		switch (dir)
+		{
+		case DIR_E:
+			return SDIR_E;
+		case DIR_SE:
+			return SDIR_SE;
+		case DIR_S:
+			return SDIR_S;
+		case DIR_SW:
+			return SDIR_SW;
+		case DIR_NW:
+			return SDIR_NW;
+		case DIR_N:
+			return SDIR_N;
+		case DIR_NE:
+			return SDIR_NE;
+		default:
+			return SDIR_NONE;
+		}
+	}
+
+	template <_scroll_direction dir>
+	void StartWalkScrollHandle()
+	{
+		if (zoomflag) {
+			if (abs(ScrollInfo.tile.x) >= 3 || abs(ScrollInfo.tile.y) >= 3) {
+				ScrollInfo._sdir = SDIR_NONE;
+			} else {
+				ScrollInfo._sdir = dir;
+			}
+		} else if (abs(ScrollInfo.tile.x) >= 2 || abs(ScrollInfo.tile.y) >= 2) {
+			ScrollInfo._sdir = SDIR_NONE;
+		} else {
+			ScrollInfo._sdir = dir;
+		}
+	}
 } // namespace
 
 namespace devilution {
@@ -1359,7 +1398,8 @@ void PM_ChangeOffset(int pnum)
 /**
  * @brief Start moving a player to a new tile
  */
-void StartWalk(int pnum, Point vel, Point off, Point add, Point map, Direction EndDir, _scroll_direction sdir, int variant, bool pmWillBeCalled)
+template <Direction endDir>
+void StartWalk(int pnum, Point vel, Point add, Point map, bool pmWillBeCalled)
 {
 	auto &player = plr[pnum];
 
@@ -1370,7 +1410,7 @@ void StartWalk(int pnum, Point vel, Point off, Point add, Point map, Direction E
 
 	SetPlayerOld(player);
 
-	if (!PlrDirOK(pnum, EndDir)) {
+	if (!PlrDirOK(pnum, endDir)) {
 		return;
 	}
 
@@ -1385,15 +1425,30 @@ void StartWalk(int pnum, Point vel, Point off, Point add, Point map, Direction E
 		ScrollInfo.tile.y = player.position.tile.y - ViewY;
 	}
 
-	switch (variant) {
-	case PM_WALK:
-		WalkNorth(pnum, vel, add, EndDir);
+	switch (endDir) {
+	case DIR_N:
+		WalkNorth(pnum, vel, add, endDir);
 		break;
-	case PM_WALK2:
-		WalkSouth(pnum, vel, off, EndDir);
+	case DIR_NE:
+		WalkNorth(pnum, vel, add, endDir);
 		break;
-	case PM_WALK3:
-		WalkSides(pnum, vel, map, off, EndDir);
+	case DIR_NW:
+		WalkNorth(pnum, vel, add, endDir);
+		break;
+	case DIR_S:
+		WalkSouth(pnum, vel, { 0, -32 }, endDir);
+		break;
+	case DIR_SE:
+		WalkSouth(pnum, vel, { -32, -16 }, endDir);
+		break;
+	case DIR_SW:
+		WalkSouth(pnum, vel, { 32, -16 }, endDir);
+		break;
+	case DIR_E:
+		WalkSides(pnum, vel, map, { -32, -16 }, endDir);
+		break;
+	case DIR_W:
+		WalkSides(pnum, vel, map, { 32, -16 }, endDir);
 		break;
 	}
 
@@ -1403,25 +1458,16 @@ void StartWalk(int pnum, Point vel, Point off, Point add, Point map, Direction E
 		skippedFrames = 2;
 	if (pmWillBeCalled)
 		skippedFrames += 1;
-	NewPlrAnim(player, player_graphic::Walk, EndDir, player._pWFrames, 0, AnimationDistributionFlags::ProcessAnimationPending, skippedFrames);
+	NewPlrAnim(player, player_graphic::Walk, endDir, player._pWFrames, 0, AnimationDistributionFlags::ProcessAnimationPending, skippedFrames);
 
-	player._pdir = EndDir;
+	player._pdir = endDir;
 
 	if (pnum != myplr) {
 		return;
 	}
 
-	if (zoomflag) {
-		if (abs(ScrollInfo.tile.x) >= 3 || abs(ScrollInfo.tile.y) >= 3) {
-			ScrollInfo._sdir = SDIR_NONE;
-		} else {
-			ScrollInfo._sdir = sdir;
-		}
-	} else if (abs(ScrollInfo.tile.x) >= 2 || abs(ScrollInfo.tile.y) >= 2) {
-		ScrollInfo._sdir = SDIR_NONE;
-	} else {
-		ScrollInfo._sdir = sdir;
-	}
+
+	StartWalkScrollHandle<DirToScrollDir(endDir)>();
 }
 
 void StartAttack(int pnum, Direction d)
@@ -3055,59 +3101,51 @@ void CheckNewPath(int pnum, bool pmWillBeCalled)
 			switch (player.walkpath[0]) {
 			case WALK_N:
 				velocity = { 0, -xvel };
-				offset = { 0, 0 };
 				add = { -1, -1 };
 				map = { 0, 0 };
-				StartWalk(pnum, velocity, offset, add, map, DIR_N, SDIR_N, PM_WALK, pmWillBeCalled);
+				StartWalk<DIR_N>(pnum, velocity, add, map, pmWillBeCalled);
 				break;
 			case WALK_NE:
 				velocity = { xvel, -yvel };
-				offset = { 0, 0 };
 				add = { 0, -1 };
 				map = { 0, 0 };
-				StartWalk(pnum, velocity, offset, add, map, DIR_NE, SDIR_NE, PM_WALK, pmWillBeCalled);
+				StartWalk<DIR_NE>(pnum, velocity, add, map, pmWillBeCalled);
 				break;
 			case WALK_E:
 				velocity = { xvel, -yvel };
-				offset = { -32, -16 };
 				add = { 1, -1 };
 				map = { 1, 0 };
-				StartWalk(pnum, velocity, offset, add, map, DIR_E, SDIR_E, PM_WALK3, pmWillBeCalled);
+				StartWalk<DIR_E>(pnum, velocity, add, map, pmWillBeCalled);
 				break;
 			case WALK_SE:
 				velocity = { xvel, -yvel };
-				offset = { -32, -16 };
 				add = { 1, 0 };
 				map = { 0, 0 };
-				StartWalk(pnum, velocity, offset, add, map, DIR_SE, SDIR_SE, PM_WALK2, pmWillBeCalled);
+				StartWalk<DIR_SE>(pnum, velocity, add, map, pmWillBeCalled);
 				break;
 			case WALK_S:
 				velocity = { 0, xvel };
-				offset = { 0, -32 };
 				add = { 1, 1 };
 				map = { 0, 0 };
-				StartWalk(pnum, velocity, offset, add, map, DIR_S, SDIR_S, PM_WALK2, pmWillBeCalled);
+				StartWalk<DIR_S>(pnum, velocity, add, map, pmWillBeCalled);
 				break;
 			case WALK_SW:
 				velocity = { -xvel, yvel };
-				offset = { 32, -16 };
 				add = { 0, 1 };
 				map = { 0, 0 };
-				StartWalk(pnum, velocity, offset, add, map, DIR_SW, SDIR_SW, PM_WALK2, pmWillBeCalled);
+				StartWalk<DIR_SW>(pnum, velocity, add, map, pmWillBeCalled);
 				break;
 			case WALK_W:
 				velocity = { -xvel, yvel };
-				offset = { 32, -16 };
 				add = { -1, 1 };
 				map = { 0, 1 };
-				StartWalk(pnum, velocity, offset, add, map, DIR_W, SDIR_W, PM_WALK3, pmWillBeCalled);
+				StartWalk<DIR_W>(pnum, velocity, add, map, pmWillBeCalled);
 				break;
 			case WALK_NW:
 				velocity = { -xvel, -yvel };
-				offset = { 0, 0 };
 				add = { -1, 0 };
 				map = { 0, 0 };
-				StartWalk(pnum, velocity, offset, add, map, DIR_NW, SDIR_NW, PM_WALK, pmWillBeCalled);
+				StartWalk<DIR_NW>(pnum, velocity, add, map, pmWillBeCalled);
 				break;
 			}
 
