@@ -201,9 +201,7 @@ void MoveMissilePos(Missile &missile)
 
 bool MonsterMHit(int pnum, int m, int mindam, int maxdam, int dist, missile_id t, bool shift)
 {
-	auto &monster = Monsters[m];
-
-	bool resist = false;
+	auto& monster = Monsters[m];
 	if (monster.mtalkmsg != TEXT_NONE
 	    || monster._mhitpoints >> 6 <= 0
 	    || (t == MIS_HBOLT && monster.MType->mtype != MT_DIABLO && monster.MData->mMonstClass != MonsterClass::Undead)) {
@@ -217,18 +215,22 @@ bool MonsterMHit(int pnum, int m, int mindam, int maxdam, int dist, missile_id t
 	uint8_t mor = monster.mMagicRes;
 	missile_resistance mir = MissilesData[t].mResist;
 
+	// is the monster immune to certain dmg?
 	if (((mor & IMMUNE_MAGIC) != 0 && mir == MISR_MAGIC)
 	    || ((mor & IMMUNE_FIRE) != 0 && mir == MISR_FIRE)
 	    || ((mor & IMMUNE_LIGHTNING) != 0 && mir == MISR_LIGHTNING)
 	    || ((mor & IMMUNE_ACID) != 0 && mir == MISR_ACID))
 		return false;
 
+	// is the monster resistant to certain dmg?
+	bool resist = false;
 	if (((mor & RESIST_MAGIC) != 0 && mir == MISR_MAGIC)
 	    || ((mor & RESIST_FIRE) != 0 && mir == MISR_FIRE)
 	    || ((mor & RESIST_LIGHTNING) != 0 && mir == MISR_LIGHTNING))
 		resist = true;
 
-	if (gbIsHellfire && t == MIS_HBOLT && (monster.MType->mtype == MT_DIABLO || monster.MType->mtype == MT_BONEDEMN))
+	// if helfire and moster is diablo or boney ones?
+	if (gbIsHellfire && t == MIS_HBOLT && (Monsters[m].MType->mtype == MT_DIABLO || Monsters[m].MType->mtype == MT_BONEDEMN))
 		resist = true;
 
 	int hit = GenerateRnd(100);
