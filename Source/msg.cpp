@@ -750,15 +750,15 @@ void DeltaLeaveSync(uint8_t bLevel)
 	if (!gbIsMultiplayer)
 		return;
 	if (leveltype == DTYPE_TOWN) {
-		glSeedTbl[0] = AdvanceRndSeed();
+		DungeonSeeds[0] = AdvanceRndSeed();
 		return;
 	}
 
 	DLevel &deltaLevel = GetDeltaLevel(bLevel);
 
 	for (size_t i = 0; i < ActiveMonsterCount; i++) {
-		int ma = ActiveMonsters[i];
-		auto &monster = Monsters[ma];
+		const unsigned ma = ActiveMonsters[i];
+		Monster &monster = Monsters[ma];
 		if (monster.hitPoints == 0)
 			continue;
 		DMonsterStr &delta = deltaLevel.monster[ma];
@@ -1044,6 +1044,8 @@ bool IsPItemValid(const TCmdPItem &message, const Player &player)
 			ValidateField(creationFlags, IsTownItemValid(creationFlags, player));
 		else if ((creationFlags & CF_USEFUL) == CF_UPER15)
 			ValidateFields(creationFlags, dwBuff, IsUniqueMonsterItemValid(creationFlags, dwBuff));
+		else if ((dwBuff & CF_HELLFIRE) != 0 && AllItemsList[idx].iMiscId == IMISC_BOOK)
+			return RecreateHellfireSpellBook(player, message.item);
 		else
 			ValidateFields(creationFlags, dwBuff, IsDungeonItemValid(creationFlags, dwBuff));
 	}
@@ -1816,7 +1818,7 @@ size_t OnMonstDamage(const TCmd *pCmd, Player &player)
 	if (gbBufferMsgs != 1) {
 		if (&player != MyPlayer) {
 			if (player.isOnActiveLevel() && monsterIdx < MaxMonsters) {
-				auto &monster = Monsters[monsterIdx];
+				Monster &monster = Monsters[monsterIdx];
 				monster.tag(player);
 				if (monster.hitPoints > 0) {
 					monster.hitPoints -= SDL_SwapLE32(message.dwDam);
@@ -2379,7 +2381,7 @@ size_t OnSpawnMonster(const TCmd *pCmd, const Player &player)
 	if (gbBufferMsgs == 1)
 		return sizeof(message);
 
-	const Point position { message.x, message.y };
+	const WorldTilePosition position { message.x, message.y };
 
 	size_t typeIndex = static_cast<size_t>(SDL_SwapLE16(message.typeIndex));
 	size_t monsterId = static_cast<size_t>(SDL_SwapLE16(message.monsterId));
@@ -2387,6 +2389,12 @@ size_t OnSpawnMonster(const TCmd *pCmd, const Player &player)
 	DLevel &deltaLevel = GetDeltaLevel(player);
 
 	deltaLevel.spawnedMonsters[monsterId] = { typeIndex, message.seed };
+	// Override old monster delta information
+	auto &deltaMonster = deltaLevel.monster[monsterId];
+	deltaMonster.position = position;
+	deltaMonster.hitPoints = -1;
+	deltaMonster._menemy = 0;
+	deltaMonster._mactive = 0;
 
 	if (player.isOnActiveLevel() && &player != MyPlayer)
 		InitializeSpawnedMonster(position, message.dir, typeIndex, monsterId, message.seed);
@@ -2692,7 +2700,7 @@ void DeltaLoadLevel()
 			if (deltaLevel.monster[i].position.x == 0xFF)
 				continue;
 
-			auto &monster = Monsters[i];
+			Monster &monster = Monsters[i];
 			M_ClearSquares(monster);
 			{
 				const WorldTilePosition position = deltaLevel.monster[i].position;
